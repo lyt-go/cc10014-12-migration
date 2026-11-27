@@ -5,6 +5,10 @@ services:
       - "8000:8000"
     environment:
       - APP_ENV=local
+      # SQLite 数据库固定到挂载卷，容器重启/升级后工序与排期数据可恢复。
+      - APP_DB_PATH=/srv/data/app.sqlite3
+    volumes:
+      - backend_data:/srv/data
   frontend:
     build: ./frontend
     ports:
@@ -14,3 +18,6 @@ services:
       VITE_PROXY_TARGET: http://backend:8000
     depends_on:
       - backend
+
+volumes:
+  backend_data:

@@ -16,9 +16,12 @@
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
+│   ├── app/routers/persistence.py 交接清单与动作状态核对接口
 │   ├── app/services/<key>.py    每个模块独立领域逻辑
-│   ├── app/services/base.py     共享服务骨架
-│   └── app/store.py          内存数据仓库与示例数据
+│   ├── app/services/base.py     共享服务骨架（事务化动作执行）
+│   ├── app/db.py             SQLite 连接与建表脚本
+│   ├── app/store.py          数据仓库：SQLite 持久化 + 内存工作副本
+│   └── backend/data/*.sqlite3   运行期数据库（已在 .gitignore，不入库）
 ├── .gitignore
 └── docker-compose.yml
 ```
@@ -34,6 +37,29 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 健康检查：`curl http://127.0.0.1:8000/api/health`
+
+#### SQLite 持久化与升级恢复
+
+业务数据不再只存进程内存，而是落到 SQLite（默认 `backend/data/app.sqlite3`，
+可用环境变量 `APP_DB_PATH` 指定位置；`*.sqlite3` 已被 `.gitignore` 忽略）。
+
+- **表结构**：`records` 保存各模块条目（整行 JSON + id/status），`action_log`
+  持久化每次登记/发布/开始施工/完成工序的动作流水（processing/done/failed），
+  `schedule_handover` 是排期交接清单，`meta` 记录示例数据初始化版本。
+- **幂等初始化**：示例数据只在首次启动写入；重复启动或迁移重试都不会覆盖
+  用户补录的工序，也不会把已登记排期退回空白示例（meta 标记缺失但已有数据时
+  会自动补回标记）。
+- **事务化动作**：状态变更、跨模块联动（里程碑、日志归档、交接清单）在同一个
+  SQLite 事务内提交，任一失败整体回滚。同一工序卡完工只生成一条交接，
+  重发相同完成动作被动作流水幂等拦截，不会产生第二次交接。
+- **崩溃恢复**：进程启动时核对停在 `processing` 的动作——条目已达目标状态则
+  确认 `done` 并补齐交接，否则标记 `failed`。工匠可凭原请求经
+  `GET /api/action-status/{module}/{id}/{action}` 核对当时实际生效状态，
+  不会出现一边已完成、一边仍待发布的分裂。
+- **同名多卡**：排期发布时按工序卡 id 建立精确关联（`关联工序ID`），
+  同名但不同施工区域的两张工序卡是两条独立记录，里程碑与交接各归各单。
+- 运维测试辅助：`Store.restart()` 模拟后台重启；`Store.reset_to_seed()`
+  仅用于测试夹具，把数据库重置回示例数据。
 
 ### 前端
 

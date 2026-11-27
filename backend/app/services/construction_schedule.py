@@ -11,7 +11,7 @@ class ConstructionScheduleService(BaseModuleService):
     MODULE = "construction_schedule"
     ENTITY = "排期计划"
     OPERATION_TERM = "发布排期"
-    LIST_FIELDS = ["计划工序", "开始日期", "结束日期", "资源配置", "里程碑节点", "编制人", "计划版本", "备注说明"]
+    LIST_FIELDS = ["计划工序", "开始日期", "结束日期", "资源配置", "里程碑节点", "编制人", "计划版本", "关联工序ID", "备注说明"]
     REQUIRED_FIELDS = ["计划工序", "开始日期", "结束日期"]
     STATUS_ORDER = ["编制中", "已发布", "执行中", "已延期"]
     ACTION_RULES = {"发布排期": "已发布", "启动执行": "执行中", "申请延期": "已延期"}
@@ -51,11 +51,21 @@ class ConstructionScheduleService(BaseModuleService):
         effects = []
         if action == "发布排期":
             process = entry.get("计划工序", "")
-            # 排期发布后更新关联工序
-            for ws_row in store.rows("work_sequence"):
-                if ws_row.get("工序名称", "") == process and ws_row.get("status") == "已发布":
+            # 排期发布后更新关联工序；同名多卡时用卡片 id 建立精确关联，
+            # 后续完工里程碑与交接清单按 id 对应，避免不同施工区域串单。
+            ws_rows = [
+                row for row in store.rows("work_sequence")
+                if row.get("工序名称", "") == process
+            ]
+            for ws_row in ws_rows:
+                if ws_row.get("status") == "已发布":
                     ws_row["排期已就绪"] = True
                     effects.append(dict(ws_row))
+            if len(ws_rows) == 1:
+                entry["关联工序ID"] = int(ws_rows[0].get("id", 0))
+            elif not entry.get("关联工序ID"):
+                # 历史排期未关联卡片且当前同名多卡时，保留名称匹配，不猜测 id。
+                entry.setdefault("关联工序ID", 0)
         elif action == "已延期":
             process = entry.get("计划工序", "")
             for ws_row in store.rows("work_sequence"):

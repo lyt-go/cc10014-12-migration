@@ -30,17 +30,8 @@ from app.services.funding_use import FundingUseService
 
 @pytest.fixture(autouse=True)
 def reset_store():
-    """每个测试前重置 store 中的 non-seed 状态。"""
-    # 清理幂等日志
-    store._idempotent_log.clear()
-    store._resource_locks.clear()
-    # 清理非 seed 条目（只保留原始 seed 数据）
-    from app.seed import SEED_ROWS
-    for name in list(store._tables.keys()):
-        if name in SEED_ROWS:
-            store._tables[name] = [dict(row) for row in SEED_ROWS[name]]
-        else:
-            store._tables[name] = []
+    """每个测试前把 SQLite 数据库重置为示例数据，动作流水与交接清单一并清空。"""
+    store.reset_to_seed()
     yield
 
 

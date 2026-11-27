@@ -24,8 +24,14 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
-    """健康检查：确认服务已经监听、示例数据已经就绪。"""
-    return {"ok": True, "app": settings.app_name, "modules": len(store.module_names())}
+    """健康检查：确认服务已经监听、示例数据已经就绪并已持久化到 SQLite。"""
+    return {
+        "ok": True,
+        "app": settings.app_name,
+        "modules": len(store.module_names()),
+        "storage": "sqlite",
+        "database": str(store.db_path),
+    }
 
 
 @app.get("/api/overview")
